@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # three, @react-three/* and friends only work in matching sets, so they
+      # move together or not at all.
+      three-stack:
+        patterns:
+          - 'three'
+          - '@types/three'
+          - '@react-three/*'
+          - '@pmndrs/*'
+      dev-tooling:
+        dependency-type: development
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: monthly

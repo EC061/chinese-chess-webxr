@@ -1,0 +1,14 @@
+{
+  "name": "@ccx/ai",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./worker": { "types": "./dist/worker.d.ts", "default": "./dist/worker.js" }
+  },
+  "scripts": { "build": "tsc -b" },
+  "dependencies": { "@ccx/shared": "1.0.0" }
+}

@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+.git
+.github
+data
+caddy
+*.md
+!README.md
+.env*
+.DS_Store

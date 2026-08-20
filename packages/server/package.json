@@ -1,0 +1,21 @@
+{
+  "name": "@ccx/server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/server.mjs",
+    "bundle": "node build.mjs"
+  },
+  "dependencies": {
+    "@ccx/shared": "1.0.0",
+    "ws": "^8.18.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1"
+  }
+}

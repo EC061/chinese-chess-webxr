@@ -1,0 +1,11 @@
+{
+  "name": "中国象棋 WebXR — Chinese Chess",
+  "short_name": "象棋 XR",
+  "description": "Seated Xiangqi in WebXR: play the on-device AI or another person across a virtual table.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#1a1210",
+  "theme_color": "#1a1210",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

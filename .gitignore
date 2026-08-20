@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+.env.local
+data/
+caddy/data/
+caddy/config/
+*.log
+.DS_Store
+.playwright-mcp/
+packages/client/public/engines/*
+!packages/client/public/engines/README.md

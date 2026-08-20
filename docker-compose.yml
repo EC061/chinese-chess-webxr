@@ -1,0 +1,97 @@
+# ============================================================================
+# chinese-chess-webxr — deployment
+#
+#   1. cp .env.example .env    and fill in SESSION_SECRET, DOMAIN, ACME_EMAIL
+#   2. point DOMAIN's DNS A/AAAA record at this host
+#   3. docker compose up -d
+#
+# Caddy is here because WebXR needs HTTPS: a headset will refuse to start an
+# immersive session on an insecure origin, so a plain HTTP deployment cannot run
+# the experience at all. Caddy gets a certificate automatically on first boot.
+#
+# If you already terminate TLS elsewhere (Traefik, nginx, a cloud load
+# balancer), delete the `caddy` service, publish the `app` port directly, and
+# make sure your proxy forwards the Cross-Origin-Opener-Policy and
+# Cross-Origin-Embedder-Policy response headers untouched — stripping them
+# silently halves the AI's strength.
+# ============================================================================
+
+services:
+  app:
+    image: ${IMAGE:-ghcr.io/OWNER/chinese-chess-webxr:latest}
+    container_name: xiangqi-app
+    restart: unless-stopped
+    init: true
+    environment:
+      # --- required -----------------------------------------------------
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env — generate one with: openssl rand -hex 32}
+      # --- gameplay & ratings -------------------------------------------
+      ALLOW_GUESTS: ${ALLOW_GUESTS:-true}
+      RATE_AI_GAMES: ${RATE_AI_GAMES:-true}
+      UNDO_MAKES_UNRATED: ${UNDO_MAKES_UNRATED:-true}
+      UNDO_RESPONSE_TIMEOUT_MS: ${UNDO_RESPONSE_TIMEOUT_MS:-30000}
+      LEADERBOARD_MIN_GAMES: ${LEADERBOARD_MIN_GAMES:-5}
+      # --- capacity -----------------------------------------------------
+      MAX_ROOMS: ${MAX_ROOMS:-200}
+      MAX_ROOMS_PER_USER: ${MAX_ROOMS_PER_USER:-3}
+      ROOM_IDLE_MS: ${ROOM_IDLE_MS:-900000}
+      MAX_CONNECTIONS_PER_IP: ${MAX_CONNECTIONS_PER_IP:-24}
+      AUTH_RATE_LIMIT: ${AUTH_RATE_LIMIT:-20}
+      AUTH_RATE_WINDOW_MS: ${AUTH_RATE_WINDOW_MS:-60000}
+      AI_REPORT_COOLDOWN_MS: ${AI_REPORT_COOLDOWN_MS:-20000}
+      # --- platform -----------------------------------------------------
+      CROSS_ORIGIN_ISOLATION: ${CROSS_ORIGIN_ISOLATION:-true}
+      TRUST_PROXY: ${TRUST_PROXY:-true}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://${DOMAIN}}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_PATH: ${DATABASE_PATH:-/data/xiangqi.db}
+    volumes:
+      - xiangqi-data:/data
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: xiangqi-caddy
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      # HTTP/3. Harmless to leave in; it measurably helps a headset on Wi-Fi.
+      - "${HTTPS_PORT:-443}:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  xiangqi-data:
+  caddy-data:
+  caddy-config:
