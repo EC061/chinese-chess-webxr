@@ -5,6 +5,12 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # Pinned to the runtime's major. @types/node 25+ describes APIs the Node 24
+      # container does not have, so a major bump here typechecks against a Node
+      # that is not the one the image runs.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
     groups:
       # three, @react-three/* and friends only work in matching sets, so they
       # move together or not at all.
