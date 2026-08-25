@@ -4,7 +4,7 @@
 # Pinned to the build machine's own architecture. Everything this stage produces
 # is platform-independent JavaScript, so cross-building for arm64 needs no QEMU
 # emulation — which takes a multi-arch build from ~15 minutes down to ~2.
-FROM --platform=$BUILDPLATFORM node:24-alpine AS build
+FROM --platform=$BUILDPLATFORM node:26-alpine AS build
 
 WORKDIR /app
 ENV NPM_CONFIG_FUND=false \
@@ -30,7 +30,7 @@ RUN npm run typecheck && npm test
 RUN npm run build && npm run bundle -w @ccx/server
 
 # -------------------------------------------------------------------- runtime --
-FROM node:24-alpine AS runtime
+FROM node:26-alpine AS runtime
 
 LABEL org.opencontainers.image.title="chinese-chess-webxr" \
       org.opencontainers.image.description="Xiangqi (Chinese Chess) as a seated WebXR experience for Meta Quest 3 / 3S." \
