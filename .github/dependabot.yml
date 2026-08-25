@@ -32,3 +32,9 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    ignore:
+      # The base image tracks the active LTS line, currently 24. Minor and patch
+      # bumps are welcome; a major one means moving to a Node that is still
+      # Current, which is not what should be running a database in production.
+      - dependency-name: node
+        update-types: ['version-update:semver-major']
