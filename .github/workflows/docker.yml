@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       # Note there is deliberately no QEMU step. The Dockerfile pins its build
       # stage to $BUILDPLATFORM and everything it emits is portable JavaScript,
