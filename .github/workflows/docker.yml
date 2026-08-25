@@ -43,7 +43,7 @@ jobs:
         # Pull requests from forks cannot access the registry token, so those
         # builds validate the Dockerfile without pushing.
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
