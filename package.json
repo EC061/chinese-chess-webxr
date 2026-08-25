@@ -25,7 +25,7 @@
     "bundle": "npm run build && npm run bundle -w @ccx/server"
   },
   "devDependencies": {
-    "@types/node": "^24.13.3",
+    "@types/node": "^26.2.0",
     "esbuild": "^0.28.2",
     "npm-run-all2": "^9.0.3",
     "tsx": "^4.23.12",
