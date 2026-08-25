@@ -1,0 +1,53 @@
+networks:
+    1panel-network:
+        external: true
+services:
+    chinese-chess-webxr:
+        container_name: xiangqi-app
+        environment:
+            - "HOST=0.0.0.0"
+            - "SESSION_SECRET=${SESSION_SECRET:?set SESSION_SECRET in .env - openssl rand -hex 32}"
+            - "ALLOW_GUESTS=${ALLOW_GUESTS:-true}"
+            - "RATE_AI_GAMES=${RATE_AI_GAMES:-true}"
+            - "UNDO_MAKES_UNRATED=${UNDO_MAKES_UNRATED:-true}"
+            - "UNDO_RESPONSE_TIMEOUT_MS=${UNDO_RESPONSE_TIMEOUT_MS:-30000}"
+            - "LEADERBOARD_MIN_GAMES=${LEADERBOARD_MIN_GAMES:-5}"
+            - "MAX_ROOMS=${MAX_ROOMS:-200}"
+            - "MAX_ROOMS_PER_USER=${MAX_ROOMS_PER_USER:-3}"
+            - "ROOM_IDLE_MS=${ROOM_IDLE_MS:-900000}"
+            - "MAX_CONNECTIONS_PER_IP=${MAX_CONNECTIONS_PER_IP:-24}"
+            - "AUTH_RATE_LIMIT=${AUTH_RATE_LIMIT:-20}"
+            - "AUTH_RATE_WINDOW_MS=${AUTH_RATE_WINDOW_MS:-60000}"
+            - "AI_REPORT_COOLDOWN_MS=${AI_REPORT_COOLDOWN_MS:-20000}"
+            - "CROSS_ORIGIN_ISOLATION=true"
+            - "TRUST_PROXY=true"
+            - "PUBLIC_ORIGIN=${PUBLIC_ORIGIN:-}"
+            - "LOG_LEVEL=${LOG_LEVEL:-info}"
+            - "DATABASE_PATH=/data/xiangqi.db"
+        healthcheck:
+            interval: 30s
+            retries: 3
+            start_period: 20s
+            test:
+                - CMD
+                - wget
+                - -q
+                - --spider
+                - "http://127.0.0.1:8080/healthz"
+            timeout: 5s
+        image: "ghcr.io/ec061/chinese-chess-webxr:latest"
+        init: true
+        labels:
+            createdBy: Apps
+        networks:
+            - 1panel-network
+        ports:
+            - "127.0.0.1:8080:8080"
+        read_only: true
+        restart: always
+        security_opt:
+            - "no-new-privileges:true"
+        tmpfs:
+            - /tmp
+        volumes:
+            - "./data:/data"

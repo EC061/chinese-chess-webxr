@@ -231,6 +231,13 @@ docker run --rm -v xiangqi-data:/data -v "$PWD:/backup" alpine \
   sh -c 'apk add -q sqlite && sqlite3 /data/xiangqi.db ".backup /backup/xiangqi.db"'
 ```
 
+### On 1Panel
+
+[`deploy/1panel/`](deploy/1panel/) holds the compose file behind the live
+deployment, with notes on the things that fail quietly there: the bind mount's
+ownership against the container's uid, GHCR package visibility being separate
+from the repository's, and a CDN rewriting `Strict-Transport-Security`.
+
 ---
 
 ## How it is built
