@@ -25,6 +25,51 @@ export interface Strings {
   signOut: string;
   guestNotice: string;
   authFailed: string;
+  account: string;
+  playingAs: string;
+  guestBadge: string;
+  guestWelcome: string;
+  offlineNotice: string;
+  cancel: string;
+
+  // session persistence
+  staySignedIn: string;
+  staySignedInHint: string;
+  storageKept: string;
+  storageEvictable: string;
+
+  // claiming a guest
+  claimAccount: string;
+  claimAccountSub: string;
+  claimHint: string;
+  accountClaimed: string;
+
+  // pairing, headset side
+  linkWithPhone: string;
+  linkWithPhoneSub: string;
+  linkTitle: string;
+  linkStep1: string;
+  linkStep2: string;
+  linkWaiting: string;
+  linkExpiresIn: string;
+  linkExpired: string;
+  linkDenied: string;
+  linkRetry: string;
+  linkPassthroughHint: string;
+  linkedAs: string;
+
+  // pairing, phone side
+  approveTitle: string;
+  approveIntro: string;
+  pairingCode: string;
+  approveContinue: string;
+  approveFoundGuest: string;
+  approveKeepGuest: string;
+  approveUseAccount: string;
+  approveDone: string;
+  approveDoneHint: string;
+  approveDeny: string;
+  approveDenied: string;
 
   // menu
   playAi: string;
@@ -158,6 +203,47 @@ const zh: Strings = {
   signOut: '退出登录',
   guestNotice: '访客对局不计积分。注册后即可累积棋力评分。',
   authFailed: '登录失败',
+  account: '账号',
+  playingAs: '当前身份',
+  guestBadge: '访客',
+  guestWelcome: '你现在是「{name}」，可以直接开局。',
+  offlineNotice: '连不上服务器 —— 仍可与本机 AI 对局。',
+  cancel: '取消',
+
+  staySignedIn: '在这台设备上保持登录',
+  staySignedInHint: '关闭后，关掉浏览器就会退出登录。全家共用的头显建议关闭。',
+  storageKept: '浏览器已承诺保留本站数据，登录状态不会被自动清除。',
+  storageEvictable: '浏览器空间不足时可能清除登录状态。',
+
+  claimAccount: '保留这个身份',
+  claimAccountSub: '给「{name}」设个密码，变成正式账号',
+  claimHint: '已下的棋谱会保留；计分从建立账号那一刻开始。',
+  accountClaimed: '账号已建立，之后的对局开始计分。',
+
+  linkWithPhone: '用手机登录',
+  linkWithPhoneSub: '头显里一个字都不用打',
+  linkTitle: '用手机登录',
+  linkStep1: '① 在手机上打开',
+  linkStep2: '② 输入这个配对码',
+  linkWaiting: '等待手机确认…',
+  linkExpiresIn: '有效期还有 {time}',
+  linkExpired: '配对码已过期。',
+  linkDenied: '已在手机上取消。',
+  linkRetry: '重新生成',
+  linkPassthroughHint: '打开透视，戴着头显也能看清手里的真手机。',
+  linkedAs: '已登录为「{name}」。',
+
+  approveTitle: '连接头显',
+  approveIntro: '输入头显里显示的 8 位配对码。',
+  pairingCode: '配对码',
+  approveContinue: '继续',
+  approveFoundGuest: '这台头显现在是访客「{name}」。',
+  approveKeepGuest: '保留这个身份并设置密码',
+  approveUseAccount: '用已有账号登录',
+  approveDone: '完成',
+  approveDoneHint: '戴回头显即可，几秒内自动登录。',
+  approveDeny: '不是我',
+  approveDenied: '已取消这次配对。',
 
   playAi: '人机对战',
   playAiSub: '八档棋力，可随时悔棋',
@@ -284,6 +370,47 @@ const en: Strings = {
   signOut: 'Sign out',
   guestNotice: 'Guest games are not rated. Create an account to build a rating.',
   authFailed: 'Sign-in failed',
+  account: 'Account',
+  playingAs: 'Playing as',
+  guestBadge: 'Guest',
+  guestWelcome: 'You are playing as {name}. Start whenever you like.',
+  offlineNotice: 'Cannot reach the server — the on-device AI still works.',
+  cancel: 'Cancel',
+
+  staySignedIn: 'Stay signed in on this device',
+  staySignedInHint: 'Off means closing the browser signs you out — the right choice for a headset the whole house wears.',
+  storageKept: 'The browser has promised to keep this site\'s data, so the session will not be cleared to free space.',
+  storageEvictable: 'The browser may clear your session if storage runs low.',
+
+  claimAccount: 'Keep this player',
+  claimAccountSub: 'Give {name} a password and make it a real account',
+  claimHint: 'The games you have played stay on your record; rated play starts when you claim.',
+  accountClaimed: 'Account created. Games from here on are rated.',
+
+  linkWithPhone: 'Sign in with your phone',
+  linkWithPhoneSub: 'No typing in the headset',
+  linkTitle: 'Sign in from your phone',
+  linkStep1: '1. On your phone, open',
+  linkStep2: '2. Enter this code',
+  linkWaiting: 'Waiting for your phone…',
+  linkExpiresIn: 'Expires in {time}',
+  linkExpired: 'That code has expired.',
+  linkDenied: 'Cancelled on your phone.',
+  linkRetry: 'New code',
+  linkPassthroughHint: 'Turn on passthrough and you can read this while holding your actual phone.',
+  linkedAs: 'Signed in as {name}.',
+
+  approveTitle: 'Connect your headset',
+  approveIntro: 'Type the 8-character code showing in your headset.',
+  pairingCode: 'Pairing code',
+  approveContinue: 'Continue',
+  approveFoundGuest: 'That headset is playing as guest {name}.',
+  approveKeepGuest: 'Keep that player and set a password',
+  approveUseAccount: 'Sign in with an existing account',
+  approveDone: 'Done',
+  approveDoneHint: 'Put the headset back on — it signs in within a few seconds.',
+  approveDeny: 'That was not me',
+  approveDenied: 'Pairing cancelled.',
 
   playAi: 'Play the AI',
   playAiSub: 'Eight strength levels, take back moves freely',

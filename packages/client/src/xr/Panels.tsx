@@ -289,19 +289,33 @@ export const MenuPanel = () => {
   const lang = useStore((state) => state.lang);
   const user = useStore((state) => state.user);
   const screen = useStore((state) => state.screen);
-  const { goto, openLobby, setLang } = useStore.getState();
+  const { goto, openLobby, setLang, startLink } = useStore.getState();
   if (screen !== 'menu') return null;
 
   return (
-    <Panel width={0.36} height={0.34} position={[0, TABLE_HEIGHT + 0.30, -0.04]} rotation={[-0.18, 0, 0]}>
-      <Label text={s.appTitle} size={0.028} align="center" weight={700} position={[0, 0.128, 0.002]} />
-      <Label text={s.appSubtitle} size={0.012} align="center" color={UI.textDim} position={[0, 0.104, 0.002]} />
+    <Panel width={0.36} height={0.40} position={[0, TABLE_HEIGHT + 0.30, -0.04]} rotation={[-0.18, 0, 0]}>
+      <Label text={s.appTitle} size={0.028} align="center" weight={700} position={[0, 0.158, 0.002]} />
+      <Label text={s.appSubtitle} size={0.012} align="center" color={UI.textDim} position={[0, 0.134, 0.002]} />
 
-      <Button label={s.playAi} sub={s.playAiSub} width={0.32} height={0.05} variant="primary" onClick={() => goto('ai-setup')} position={[0, 0.05, 0]} />
-      <Button label={s.playHuman} sub={s.playHumanSub} width={0.32} height={0.05} onClick={openLobby} position={[0, -0.008, 0]} />
-      <Button label={s.tutorial} sub={s.tutorialSub} width={0.32} height={0.05} onClick={() => goto('tutorial')} position={[0, -0.066, 0]} />
+      <Button label={s.playAi} sub={s.playAiSub} width={0.32} height={0.05} variant="primary" onClick={() => goto('ai-setup')} position={[0, 0.08, 0]} />
+      <Button label={s.playHuman} sub={s.playHumanSub} width={0.32} height={0.05} onClick={openLobby} position={[0, 0.022, 0]} />
+      <Button label={s.tutorial} sub={s.tutorialSub} width={0.32} height={0.05} onClick={() => goto('tutorial')} position={[0, -0.036, 0]} />
 
-      <group position={[0, -0.126, 0]}>
+      {/* Only offered to guests, and only ever as a phone hand-off: there is no
+          version of this that asks someone to type a password in here. */}
+      {user?.guest ? (
+        <Button
+          label={s.linkWithPhone}
+          sub={s.linkWithPhoneSub}
+          width={0.32}
+          height={0.042}
+          textSize={0.013}
+          onClick={() => void startLink()}
+          position={[0, -0.092, 0]}
+        />
+      ) : null}
+
+      <group position={[0, -0.156, 0]}>
         <Button label="中文" width={0.07} height={0.032} textSize={0.013} variant={lang === 'zh' ? 'primary' : 'ghost'} onClick={() => setLang('zh')} position={[-0.115, 0, 0]} />
         <Button label="EN" width={0.07} height={0.032} textSize={0.013} variant={lang === 'en' ? 'primary' : 'ghost'} onClick={() => setLang('en')} position={[-0.038, 0, 0]} />
         <Label
@@ -314,6 +328,104 @@ export const MenuPanel = () => {
       </group>
     </Panel>
   );
+};
+
+/**
+ * Pairing, from inside the headset.
+ *
+ * The player reads eight characters off this panel and types them on their
+ * phone. It cannot be a QR code: the phone's camera cannot see a display that
+ * is strapped to the player's face. What it can do is lean on passthrough —
+ * with the world visible, someone can read this panel and use their real phone
+ * without breaking the session, which is the whole reason this flow exists
+ * rather than "take the headset off and sign in on a laptop".
+ */
+export const LinkPanel = () => {
+  const s = useStore((state) => state.s);
+  const screen = useStore((state) => state.screen);
+  const link = useStore((state) => state.link);
+  const busy = useStore((state) => state.authBusy);
+  const { startLink, cancelLink, goto } = useStore.getState();
+  const remaining = useTicker(link?.status === 'pending');
+
+  if (screen !== 'link') return null;
+
+  const msLeft = link ? Math.max(0, link.expiresAt - remaining) : 0;
+  const status = !link
+    ? '…'
+    : link.status === 'expired'
+      ? s.linkExpired
+      : link.status === 'denied'
+        ? s.linkDenied
+        : `${s.linkWaiting}  ${s.linkExpiresIn.replace('{time}', clockText(msLeft))}`;
+
+  return (
+    <Panel width={0.40} height={0.34} position={[0, TABLE_HEIGHT + 0.30, -0.04]} rotation={[-0.18, 0, 0]}>
+      <Label text={s.linkTitle} size={0.022} align="center" weight={700} position={[0, 0.128, 0.002]} />
+
+      <Label text={s.linkStep1} size={0.012} align="center" color={UI.textDim} position={[0, 0.094, 0.002]} />
+      <Label text={link?.url ?? ''} size={0.016} align="center" weight={600} position={[0, 0.068, 0.002]} />
+
+      <Label text={s.linkStep2} size={0.012} align="center" color={UI.textDim} position={[0, 0.032, 0.002]} />
+      <Panel width={0.30} height={0.062} color="#100d0b" depth={0.004} position={[0, -0.014, 0]}>
+        <Label
+          text={link?.userCode ?? '––––'}
+          size={0.038}
+          align="center"
+          weight={700}
+          color={UI.accentHot}
+          position={[0, 0, 0.002]}
+        />
+      </Panel>
+
+      <Label text={status} size={0.012} align="center" color={UI.textDim} position={[0, -0.062, 0.002]} />
+
+      {!link || link.status !== 'pending' ? (
+        <Button
+          label={s.linkRetry}
+          width={0.16}
+          height={0.04}
+          variant="primary"
+          disabled={busy}
+          onClick={() => void startLink()}
+          position={[-0.09, -0.104, 0]}
+        />
+      ) : null}
+      <Button
+        label={s.cancel}
+        width={0.16}
+        height={0.04}
+        variant="ghost"
+        onClick={() => { cancelLink(); goto('menu'); }}
+        position={[!link || link.status !== 'pending' ? 0.09 : 0, -0.104, 0]}
+      />
+
+      <Label
+        text={s.linkPassthroughHint}
+        size={0.0105}
+        align="center"
+        color={UI.textDim}
+        wrapAt={0.36}
+        maxWidth={0.36}
+        position={[0, -0.148, 0.002]}
+      />
+    </Panel>
+  );
+};
+
+/**
+ * A once-a-second re-render, returning `Date.now()`. The flat interface has its
+ * own copy of this; sharing one would mean an import between the DOM screens and
+ * the 3D panels, and those two deliberately do not depend on each other.
+ */
+const useTicker = (running: boolean): number => {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!running) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [running]);
+  return now;
 };
 
 export const AiSetupPanel = () => {

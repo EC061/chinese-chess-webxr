@@ -47,6 +47,13 @@ services:
       AUTH_RATE_LIMIT: ${AUTH_RATE_LIMIT:-20}
       AUTH_RATE_WINDOW_MS: ${AUTH_RATE_WINDOW_MS:-60000}
       AI_REPORT_COOLDOWN_MS: ${AI_REPORT_COOLDOWN_MS:-20000}
+      # --- sessions & headset pairing -----------------------------------
+      # SECURE_COOKIES follows PUBLIC_ORIGIN / NODE_ENV when left unset, which
+      # is what you want behind an HTTPS proxy.
+      SECURE_COOKIES: ${SECURE_COOKIES:-}
+      SESSION_PERSIST_DAYS: ${SESSION_PERSIST_DAYS:-400}
+      LINK_CODE_TTL_MS: ${LINK_CODE_TTL_MS:-600000}
+      LINK_POLL_INTERVAL_MS: ${LINK_POLL_INTERVAL_MS:-2000}
       # --- platform -----------------------------------------------------
       # Interface the server listens on *inside* the container. Keep 0.0.0.0 or
       # the published port has nothing to forward to; BIND_ADDR above is what

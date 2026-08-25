@@ -17,7 +17,7 @@ import { BoardView } from './BoardView.js';
 import { Environment, Lighting } from './Environment.js';
 import { BOARD_Y, SEAT_DISTANCE } from './geometry.js';
 import {
-  AiSetupPanel, EmoteBar, GamePanel, LobbyPanel, MenuPanel, PromptOverlay, ResultPanel,
+  AiSetupPanel, EmoteBar, GamePanel, LinkPanel, LobbyPanel, MenuPanel, PromptOverlay, ResultPanel,
   RoomWaitingPanel, TutorialPanel,
 } from './Panels.js';
 
@@ -104,6 +104,7 @@ export const Scene = () => {
       {/* Panels live in player space: +X is the player's right, +Z is nearer. */}
       <group rotation={[0, seatRotation, 0]} visible={immersive}>
         {immersive ? <MenuPanel /> : null}
+        {immersive ? <LinkPanel /> : null}
         {immersive ? <AiSetupPanel /> : null}
         {immersive ? <LobbyPanel /> : null}
         {immersive ? <TutorialPanel /> : null}

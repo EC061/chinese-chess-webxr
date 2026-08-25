@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { LEVELS } from '@ccx/ai';
 import { LESSONS, RED, type RoomSummary } from '@ccx/shared';
 import { reasonText } from '../i18n/index.js';
+import { api, apiErrorText, type LinkLookup } from '../state/api.js';
 import { useStore } from '../state/store.js';
 import type { Store } from '../xr/XRApp.js';
 
@@ -22,6 +23,26 @@ export const useXRMode = (store: Store): XRSessionMode | null =>
     () => store.getState().mode,
     () => null,
   );
+
+/** mm:ss remaining, re-rendered once a second while it matters. */
+export const useCountdown = (until: number | null): string => {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (until === null) return;
+    const timer = window.setInterval(() => tick((n) => n + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [until]);
+  if (until === null) return '';
+  const seconds = Math.max(0, Math.round((until - Date.now()) / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+};
+
+/** Pairing codes are read aloud off a panel, so display them grouped. */
+const withDash = (code: string): string =>
+  (code.length > 4 ? `${code.slice(0, 4)}-${code.slice(4)}` : code);
+
+const cleanCode = (input: string): string =>
+  input.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
 
 const useSessionSupport = () => {
   const [support, setSupport] = useState<{ vr: boolean; ar: boolean; checked: boolean }>({
@@ -84,10 +105,13 @@ export const TopBar = ({ store }: { store: Store }) => {
           onClick={() => (screen === 'settings' ? goto('menu') : goto('settings'))}
           title={s.settings}
         >
-          {user.name} · {user.rating}{user.provisional ? '?' : ''}
+          {user.name}
+          {user.guest ? ` · ${s.guestBadge}` : ` · ${user.rating}${user.provisional ? '?' : ''}`}
         </button>
       ) : null}
-      {user ? <button className="ghost" onClick={signOut}>{s.signOut}</button> : null}
+      {user && !user.guest ? (
+        <button className="ghost" onClick={() => void signOut()}>{s.signOut}</button>
+      ) : null}
     </header>
   );
 };
@@ -99,7 +123,7 @@ export const AuthScreen = () => {
   const busy = useStore((state) => state.authBusy);
   const error = useStore((state) => state.authError);
   const capabilities = useStore((state) => state.capabilities);
-  const { signIn, signUp, playAsGuest } = useStore.getState();
+  const { signIn, signUp, playAsGuest, startLink } = useStore.getState();
   const [mode, setMode] = useState<'in' | 'up'>('in');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
@@ -111,39 +135,296 @@ export const AuthScreen = () => {
 
   return (
     <div className="center-pane">
-      <form className="card sheet stack" onSubmit={submit}>
+      <div className="card sheet stack">
         <h2 style={{ margin: 0 }}>{mode === 'in' ? s.signIn : s.signUp}</h2>
-        <label className="field">
-          {s.displayName}
-          <input value={name} onChange={(e) => setName(e.target.value)} autoComplete="username" maxLength={20} />
-        </label>
-        <label className="field">
-          {s.password}
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete={mode === 'in' ? 'current-password' : 'new-password'}
-          />
-          {mode === 'up' ? <span className="muted">{s.passwordHint}</span> : null}
-        </label>
-        {error ? <div className="error">{error}</div> : null}
-        <div className="row">
-          <button className="primary" type="submit" disabled={busy || !name || !password}>
-            {mode === 'in' ? s.signIn : s.signUp}
-          </button>
-          <button type="button" className="ghost" onClick={() => setMode(mode === 'in' ? 'up' : 'in')}>
-            {mode === 'in' ? s.signUp : s.signIn}
-          </button>
-          <div className="spacer" />
-          {capabilities?.allowGuests !== false ? (
-            <button type="button" disabled={busy} onClick={() => void playAsGuest(name)}>
-              {s.playAsGuest}
+
+        {/* First, because on a headset typing a password is the worst thing we
+            could ask for and this path needs no keyboard at all. */}
+        <button className="menu-item big" onClick={() => void startLink()} disabled={busy}>
+          <strong>{s.linkWithPhone}</strong>
+          <span>{s.linkWithPhoneSub}</span>
+        </button>
+
+        <form className="stack" onSubmit={submit}>
+          <label className="field">
+            {s.displayName}
+            <input value={name} onChange={(e) => setName(e.target.value)} autoComplete="username" maxLength={20} />
+          </label>
+          <label className="field">
+            {s.password}
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete={mode === 'in' ? 'current-password' : 'new-password'}
+            />
+            {mode === 'up' ? <span className="muted">{s.passwordHint}</span> : null}
+          </label>
+          {error ? <div className="error">{error}</div> : null}
+          <div className="row">
+            <button className="primary" type="submit" disabled={busy || !name || !password}>
+              {mode === 'in' ? s.signIn : s.signUp}
             </button>
-          ) : null}
-        </div>
+            <button type="button" className="ghost" onClick={() => setMode(mode === 'in' ? 'up' : 'in')}>
+              {mode === 'in' ? s.signUp : s.signIn}
+            </button>
+            <div className="spacer" />
+            {capabilities?.allowGuests !== false ? (
+              <button type="button" disabled={busy} onClick={() => void playAsGuest(name)}>
+                {s.playAsGuest}
+              </button>
+            ) : null}
+          </div>
+        </form>
+
+        <PersistToggle />
         <p className="muted" style={{ margin: 0, fontSize: 13 }}>{s.guestNotice}</p>
-      </form>
+      </div>
+    </div>
+  );
+};
+
+/** The "stay signed in on this device" switch, shared by auth and settings. */
+const PersistToggle = () => {
+  const s = useStore((state) => state.s);
+  const settings = useStore((state) => state.settings);
+  const persisted = useStore((state) => state.storagePersisted);
+  const { setPersistSession } = useStore.getState();
+
+  return (
+    <div className="stack" style={{ gap: 4 }}>
+      <label className="row" style={{ gap: 8 }}>
+        <input
+          type="checkbox"
+          style={{ width: 'auto' }}
+          checked={settings.persistSession}
+          onChange={(e) => void setPersistSession(e.target.checked)}
+        />
+        {s.staySignedIn}
+      </label>
+      <span className="muted" style={{ fontSize: 13 }}>{s.staySignedInHint}</span>
+      {settings.persistSession ? (
+        <span className="muted" style={{ fontSize: 13 }}>
+          {persisted ? s.storageKept : s.storageEvictable}
+        </span>
+      ) : null}
+    </div>
+  );
+};
+
+/**
+ * The headset half of pairing: a code to read out and nothing to type.
+ *
+ * Shown in the flat interface; {@link LinkPanel} is the same flow inside a
+ * session, because this is exactly the moment you must not ask someone to take
+ * the headset off.
+ */
+export const LinkScreen = () => {
+  const s = useStore((state) => state.s);
+  const link = useStore((state) => state.link);
+  const user = useStore((state) => state.user);
+  const error = useStore((state) => state.authError);
+  const busy = useStore((state) => state.authBusy);
+  const { startLink, cancelLink, goto } = useStore.getState();
+  const remaining = useCountdown(link?.status === 'pending' ? link.expiresAt : null);
+
+  // A guest who came here to upgrade is already signed in; only somebody with
+  // no identity at all belongs back on the sign-in screen.
+  const done = () => { cancelLink(); goto(user ? 'menu' : 'auth'); };
+
+  return (
+    <div className="center-pane">
+      <div className="card sheet stack" style={{ textAlign: 'center' }}>
+        <h2 style={{ margin: 0 }}>{s.linkTitle}</h2>
+
+        {link ? (
+          <>
+            <div className="stack" style={{ gap: 4 }}>
+              <span className="muted">{s.linkStep1}</span>
+              <strong style={{ fontSize: 20, wordBreak: 'break-all' }}>{link.url}</strong>
+            </div>
+            <div className="stack" style={{ gap: 4 }}>
+              <span className="muted">{s.linkStep2}</span>
+              <strong style={{ fontSize: 44, letterSpacing: '0.12em', fontVariantNumeric: 'tabular-nums' }}>
+                {link.userCode}
+              </strong>
+            </div>
+
+            {link.status === 'pending' ? (
+              <span className="muted">
+                {s.linkWaiting} · {s.linkExpiresIn.replace('{time}', remaining)}
+              </span>
+            ) : null}
+            {link.status === 'expired' ? <div className="error">{s.linkExpired}</div> : null}
+            {link.status === 'denied' ? <div className="error">{s.linkDenied}</div> : null}
+          </>
+        ) : (
+          <span className="muted">{error ?? '…'}</span>
+        )}
+
+        <div className="row" style={{ justifyContent: 'center' }}>
+          {!link || link.status !== 'pending' ? (
+            <button className="primary" disabled={busy} onClick={() => void startLink()}>{s.linkRetry}</button>
+          ) : null}
+          <button className="ghost" onClick={done}>{s.cancel}</button>
+        </div>
+        <p className="hint-bar" style={{ margin: 0 }}>{s.linkPassthroughHint}</p>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * The phone half of pairing, served at /link.
+ *
+ * This page never creates an identity of its own and never joins a game — it
+ * exists so that the one part of the experience that genuinely needs a keyboard
+ * happens on a device that has one.
+ */
+export const ApproveScreen = () => {
+  const s = useStore((state) => state.s);
+  const lang = useStore((state) => state.lang);
+  const [code, setCode] = useState(() => {
+    try {
+      return cleanCode(new URLSearchParams(location.search).get('c') ?? '');
+    } catch {
+      return '';
+    }
+  });
+  const [stage, setStage] = useState<'code' | 'choose' | 'attach' | 'claim' | 'done' | 'denied'>('code');
+  const [waiting, setWaiting] = useState<LinkLookup['waiting']>(null);
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async (work: () => Promise<void>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await work();
+    } catch (failure) {
+      setError(apiErrorText(failure, lang));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const lookup = () => run(async () => {
+    const found = await api.link.lookup(code);
+    setWaiting(found.waiting);
+    if (found.waiting?.claimable) {
+      setName(found.waiting.name);
+      setStage('choose');
+    } else {
+      setStage('attach');
+    }
+  });
+
+  const approve = (mode: 'attach' | 'claim') => run(async () => {
+    await api.link.approve(code, mode, name, password);
+    setStage('done');
+  });
+
+  const deny = () => run(async () => {
+    await api.link.deny(code);
+    setStage('denied');
+  });
+
+  if (stage === 'done' || stage === 'denied') {
+    return (
+      <div className="center-pane">
+        <div className="card sheet stack" style={{ textAlign: 'center' }}>
+          <h2 style={{ margin: 0 }}>{stage === 'done' ? s.approveDone : s.approveDenied}</h2>
+          {stage === 'done' ? <span className="muted">{s.approveDoneHint}</span> : null}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="center-pane">
+      <div className="card sheet stack">
+        <h2 style={{ margin: 0 }}>{s.approveTitle}</h2>
+
+        {stage === 'code' ? (
+          <form
+            className="stack"
+            onSubmit={(event) => { event.preventDefault(); lookup(); }}
+          >
+            <span className="muted">{s.approveIntro}</span>
+            <label className="field">
+              {s.pairingCode}
+              <input
+                value={withDash(code)}
+                onChange={(e) => setCode(cleanCode(e.target.value))}
+                autoComplete="one-time-code"
+                autoCapitalize="characters"
+                autoCorrect="off"
+                spellCheck={false}
+                style={{ fontSize: 28, letterSpacing: '0.12em', textAlign: 'center' }}
+                autoFocus
+              />
+            </label>
+            {error ? <div className="error">{error}</div> : null}
+            <button className="primary big" type="submit" disabled={busy || code.length !== 8}>
+              {s.approveContinue}
+            </button>
+          </form>
+        ) : null}
+
+        {stage === 'choose' && waiting ? (
+          <div className="stack">
+            <span>{s.approveFoundGuest.replace('{name}', waiting.name)}</span>
+            <button className="menu-item big" onClick={() => setStage('claim')}>
+              <strong>{s.approveKeepGuest}</strong>
+              <span>{s.claimHint}</span>
+            </button>
+            <button className="menu-item" onClick={() => { setName(''); setStage('attach'); }}>
+              <strong>{s.approveUseAccount}</strong>
+            </button>
+            <button className="ghost" disabled={busy} onClick={deny}>{s.approveDeny}</button>
+          </div>
+        ) : null}
+
+        {stage === 'attach' || stage === 'claim' ? (
+          <form
+            className="stack"
+            onSubmit={(event) => { event.preventDefault(); approve(stage); }}
+          >
+            <span className="muted">
+              {stage === 'claim' ? s.claimHint : s.approveUseAccount}
+            </span>
+            <label className="field">
+              {s.displayName}
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                autoComplete="username"
+                maxLength={20}
+                autoFocus
+              />
+            </label>
+            <label className="field">
+              {s.password}
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={stage === 'claim' ? 'new-password' : 'current-password'}
+              />
+              {stage === 'claim' ? <span className="muted">{s.passwordHint}</span> : null}
+            </label>
+            {error ? <div className="error">{error}</div> : null}
+            <div className="row">
+              <button className="primary" type="submit" disabled={busy || !name || !password}>
+                {stage === 'claim' ? s.claimAccount : s.signIn}
+              </button>
+              <button type="button" className="ghost" disabled={busy} onClick={deny}>{s.approveDeny}</button>
+            </div>
+          </form>
+        ) : null}
+      </div>
     </div>
   );
 };
@@ -152,6 +433,7 @@ export const AuthScreen = () => {
 
 export const MenuScreen = () => {
   const s = useStore((state) => state.s);
+  const user = useStore((state) => state.user);
   const { goto, openLobby, loadLeaderboard } = useStore.getState();
   return (
     <div className="center-pane">
@@ -174,6 +456,14 @@ export const MenuScreen = () => {
         >
           <strong>{s.leaderboard}</strong>
         </button>
+        {/* A guest is a real account that simply has no password yet, so the
+            offer is to keep it rather than to sign up from scratch. */}
+        {user?.guest ? (
+          <button className="menu-item" onClick={() => goto('settings')}>
+            <strong>{s.claimAccount}</strong>
+            <span>{s.claimAccountSub.replace('{name}', user.name)}</span>
+          </button>
+        ) : null}
         <p className="hint-bar" style={{ margin: 0 }}>{s.flatModeHint}</p>
       </div>
     </div>
@@ -493,6 +783,8 @@ export const SettingsScreen = () => {
           <button className="ghost" onClick={() => goto('menu')}>{s.back}</button>
         </div>
 
+        <AccountSection />
+
         <div className="field">
           {s.language}
           <div className="row">
@@ -534,6 +826,90 @@ export const SettingsScreen = () => {
           {capabilities && !capabilities.crossOriginIsolation ? ` — ${s.singleThreadNotice}` : ''}
         </p>
       </div>
+    </div>
+  );
+};
+
+/** Who you are on this device, and how long that lasts. */
+const AccountSection = () => {
+  const s = useStore((state) => state.s);
+  const user = useStore((state) => state.user);
+  const busy = useStore((state) => state.authBusy);
+  const error = useStore((state) => state.authError);
+  const { claimAccount, signOut, startLink, goto } = useStore.getState();
+  const [claiming, setClaiming] = useState(false);
+  const [name, setName] = useState(user?.name ?? '');
+  const [password, setPassword] = useState('');
+
+  if (!user) {
+    return (
+      <div className="card stack">
+        <strong>{s.account}</strong>
+        <button className="primary" onClick={() => goto('auth')}>{s.signIn}</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card stack">
+      <div className="row">
+        <strong>{s.account}</strong>
+        <div className="spacer" />
+        <span className="muted">
+          {s.playingAs}: {user.name}
+          {user.guest ? ` · ${s.guestBadge}` : ` · ${user.rating}${user.provisional ? '?' : ''}`}
+        </span>
+      </div>
+
+      {user.guest && claiming ? (
+        <form
+          className="stack"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void claimAccount(name, password).then((ok) => { if (ok) setClaiming(false); });
+          }}
+        >
+          <span className="muted">{s.claimHint}</span>
+          <label className="field">
+            {s.displayName}
+            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={20} autoComplete="username" />
+          </label>
+          <label className="field">
+            {s.password}
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
+            />
+            <span className="muted">{s.passwordHint}</span>
+          </label>
+          {error ? <div className="error">{error}</div> : null}
+          <div className="row">
+            <button className="primary" type="submit" disabled={busy || !name || !password}>
+              {s.claimAccount}
+            </button>
+            <button type="button" className="ghost" onClick={() => setClaiming(false)}>{s.cancel}</button>
+          </div>
+        </form>
+      ) : null}
+
+      {user.guest && !claiming ? (
+        <div className="row wrap">
+          <button className="primary" onClick={() => setClaiming(true)}>{s.claimAccount}</button>
+          <button onClick={() => void startLink()}>{s.linkWithPhone}</button>
+          <div className="spacer" />
+          <button className="ghost" onClick={() => goto('auth')}>{s.signIn}</button>
+        </div>
+      ) : null}
+
+      {!user.guest ? (
+        <div className="row">
+          <button className="ghost" onClick={() => void signOut()}>{s.signOut}</button>
+        </div>
+      ) : null}
+
+      <PersistToggle />
     </div>
   );
 };

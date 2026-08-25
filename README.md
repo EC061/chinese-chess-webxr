@@ -29,6 +29,12 @@ move through the same rules engine the client runs, so a modified client cannot
 cheat. 悔棋 is a *request* the opponent must accept, and by default accepting one
 makes the game unrated.
 
+**No sign-in to get started.** A headset that has never been here gets a named
+guest account and lands on the board — nothing typed, nothing asked. When the
+player wants a real account, they read an eight-character code off a panel and
+type it on their phone; the headset picks up the session by itself. See *Signing
+in without a keyboard*.
+
 **Ratings.** Glicko-2, fed by both human games and AI games, with rating
 deviation so a new player converges quickly and a veteran's rating stays stable.
 Guests are never rated.
@@ -200,13 +206,16 @@ matter most:
 
 | Variable | Why you might change it |
 | --- | --- |
-| `SESSION_SECRET` | **Required.** Signs session tokens and room passcodes. |
+| `SESSION_SECRET` | **Required.** Signs session cookies, pairing codes, and room passcodes. |
 | `APP_PORT` / `BIND_ADDR` | Where the proxy finds the app. `127.0.0.1` if same host. |
 | `HOST` | Interface the server listens on inside the container. Leave `0.0.0.0`; the published port has nothing to reach otherwise. |
 | `TRUST_PROXY` | Keep `true` behind a proxy that sets `X-Forwarded-For`. Set `false` if the port is reachable directly, or per-IP limits can be spoofed. |
 | `CROSS_ORIGIN_ISOLATION` | Keep `true`. See above. |
 | `RATE_AI_GAMES` | Set `false` for a ladder of only server-witnessed games — see *Trust*, below. |
-| `PUBLIC_ORIGIN` | Only decides whether the app sends HSTS. Leave blank if your proxy already does. |
+| `PUBLIC_ORIGIN` | Decides whether the app sends HSTS, and the origin it accepts requests from. Leave blank if your proxy already sends HSTS. |
+| `ALLOW_GUESTS` | Keep `true` unless you want a closed server — it is the front door, not a fallback. See below. |
+| `SESSION_PERSIST_DAYS` | How long "stay signed in" lasts. 400 is the default *and* the ceiling a browser will honour. |
+| `SECURE_COOKIES` | Leave unset; it follows `PUBLIC_ORIGIN`. Only set it for a plain-HTTP dev server. |
 
 ### Backups
 
@@ -353,6 +362,70 @@ Production bundle, gzipped: ~176 kB three.js, ~146 kB app, ~45 kB React.
 
 ---
 
+## Signing in without a keyboard
+
+A VR keyboard is a laser pointer and a floating slab of letters. Pecking out a
+password on one is bad enough that it decides the design of everything below —
+and it gets worse, because the system keyboard only exists in the 2D browser, so
+inside an immersive session there is no text entry at all.
+
+Three consequences.
+
+**Nobody signs in to start playing.** First load creates a guest account with a
+generated name — 「疾风马 4271」, `Bold General 2804` — and goes straight to the
+board. It is a real row in `users`, not a placeholder, so the games it plays are
+recorded against it and stay on its record when the player claims it later.
+Claiming happens *in place*: same id, same history, a name and a password added.
+There is no second account and nothing to merge.
+
+**The one step that needs a keyboard happens on a phone.** The headset shows a
+code, the player opens `/link` on their phone, types eight characters, and signs
+in or sets a password there. The headset polls and picks up the session. This is
+the device authorization grant (RFC 8628) — the pattern a television uses — and
+it works *inside* an immersive session, which is the point: it never asks anyone
+to take the headset off.
+
+It is deliberately not a QR code. A phone camera cannot photograph a display
+that is strapped to the player's face. What does work is passthrough: with the
+room visible, someone reads the panel and uses their actual phone without
+leaving the session.
+
+The code is eight characters from an alphabet with no `I`, `O`, `0` or `1`,
+grouped as `BKQP-7RTM`, and typed back in any case with or without the dash —
+every character has to survive being read at arm's length inside a headset. It
+is also *not* the credential. The headset keeps a separate 256-bit device code
+and polling requires it, so reading the panel over someone's shoulder gets you
+nothing.
+
+**The session has to survive months of not being used.** It lives in an
+`HttpOnly; Secure; SameSite=Lax` cookie, which buys three things at once: script
+on the page cannot read a credential that sits on a device for a year, the
+WebSocket handshake authenticates from the same cookie so the session no longer
+travels in a query string where proxies log it, and it is unaffected by whatever
+clears `localStorage`.
+
+Two mechanisms keep it alive. Chromium — and therefore Meta's browser — clamps
+any cookie to **400 days from when it was set**, so the server re-stamps it
+whenever a player opens the app after a day away, sliding the window forward
+indefinitely. And because a headset can sit in a drawer for three weeks and look
+exactly like a site worth evicting, the client calls
+`navigator.storage.persist()` to exempt the origin from that sweep.
+
+Persistence is a choice, not a default that cannot be escaped. **Stay signed in
+on this device** is on by default — the alternative on a headset is retyping a
+password with a laser pointer — but turning it off downgrades the cookie to a
+session cookie that dies with the browser, which is the right answer for a
+headset the whole house wears. The switch is in Settings and takes effect
+immediately.
+
+What did *not* get built, and why: passkeys, which are the obvious answer and
+are excellent on Vision Pro, but platform-authenticator support on Quest is
+inconsistent enough that shipping them as the only path would strand players.
+The pairing flow above is the portable floor; passkeys can layer on top of it
+later behind a capability check.
+
+---
+
 ## Trust, and what the server can actually prove
 
 Human-versus-human games are fully authoritative. The server holds the position,
@@ -386,6 +459,14 @@ The server tests cover the things unit tests cannot: that an illegal move is
 rejected and the client resynced, that a spectator cannot move, that 悔棋 needs
 consent and a declined request leaves the board alone, that passcodes are
 enforced, and that a fabricated AI result is refused.
+
+They also cover the session and pairing rules, which are easy to get subtly
+wrong: that the session never appears in a response body or a query string, that
+a cookie old enough for its expiry to have drifted comes back re-stamped for a
+full window while a non-persistent one does not, that claiming a guest keeps its
+id, that a pairing code is useless to a poller without the matching device code,
+and that neither a POST nor a socket handshake claiming a foreign origin is
+accepted.
 
 The tutorial tests are worth a special mention — they assert that every demo
 board parses, that the focused piece has moves to show, that every marked

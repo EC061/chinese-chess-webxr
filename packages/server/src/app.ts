@@ -8,9 +8,10 @@ import { randomUUID } from 'node:crypto';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { ClientMessage, ERROR_CODES, type ServerMessage } from '@ccx/shared';
 import { createApi } from './api.js';
-import { verifyToken } from './auth.js';
+import { SESSION_COOKIE, parseCookies, verifyToken } from './auth.js';
 import { createLogger, type Config } from './config.js';
 import { Store } from './db.js';
+import { originAllowed } from './origin.js';
 import { Hub, type Client } from './rooms.js';
 import { applySecurityHeaders, createStaticHandler } from './static.js';
 
@@ -72,6 +73,15 @@ server.on('upgrade', (req, socket, head) => {
     return;
   }
 
+  // A handshake from another site would not carry a SameSite=Lax cookie in the
+  // first place, but this socket can move pieces and resign games, so refuse
+  // outright rather than relying on that alone.
+  if (!originAllowed(req, config)) {
+    socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
   const ip = clientIp(req);
   const current = connectionsPerIp.get(ip) ?? 0;
   if (current >= config.maxConnectionsPerIp) {
@@ -81,9 +91,12 @@ server.on('upgrade', (req, socket, head) => {
     return;
   }
 
-  // Browsers cannot set headers on a WebSocket handshake, so the session token
-  // travels in the query string. It is only ever sent over TLS in production.
-  const token = url.searchParams.get('token');
+  // Browsers cannot set headers on a WebSocket handshake — but they do send
+  // cookies, which is the other reason the session lives in one. The bearer
+  // header is the path for clients that are not browsers and can set it.
+  const authorization = req.headers.authorization;
+  const token = parseCookies(req.headers.cookie)[SESSION_COOKIE]
+    ?? (authorization?.startsWith('Bearer ') ? authorization.slice(7) : null);
   const payload = token ? verifyToken(config.sessionSecret, token) : null;
   if (!payload) {
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
@@ -293,6 +306,7 @@ const sweeper = setInterval(() => {
   // Guests that never played and have not been seen for a week are noise.
   const pruned = store.pruneGuests(7 * 24 * 60 * 60 * 1000);
   if (pruned) log.info(`pruned ${pruned} stale guest accounts`);
+  store.pruneLinkCodes();
 }, 60_000);
 
 return {

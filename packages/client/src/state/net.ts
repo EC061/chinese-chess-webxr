@@ -10,18 +10,28 @@ export type ConnectionState = 'idle' | 'connecting' | 'open' | 'reconnecting' | 
 export interface NetHandlers {
   onMessage(message: ServerMessage): void;
   onState(state: ConnectionState): void;
+  /**
+   * Repeated handshakes that never open. Usually Wi-Fi, but it is also what an
+   * expired or cleared session looks like from down here — the server rejects
+   * the upgrade and the socket closes without a word. The store re-checks the
+   * session rather than leaving the player watching "Reconnecting…" forever.
+   */
+  onStalled(): void;
 }
 
 const MAX_BACKOFF_MS = 15_000;
+/** Consecutive failed handshakes before the session itself is suspect. */
+const STALLED_AFTER = 5;
 
 export class Net {
   private ws: WebSocket | null = null;
-  private token: string | null = null;
   private attempt = 0;
   private timer: number | null = null;
   private closedByUs = false;
   private queue: ClientMessage[] = [];
   private state: ConnectionState = 'idle';
+  /** Whether this socket ever reached OPEN, to tell rejection from a drop. */
+  private opened = false;
   /** Replayed after a reconnect so the session picks up where it left off. */
   private resume: ClientMessage[] = [];
 
@@ -31,9 +41,9 @@ export class Net {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
-  connect(token: string): void {
-    this.token = token;
+  connect(): void {
     this.closedByUs = false;
+    this.attempt = 0;
     this.open();
   }
 
@@ -70,16 +80,17 @@ export class Net {
   }
 
   private open(): void {
-    if (!this.token) return;
     this.setState(this.attempt === 0 ? 'connecting' : 'reconnecting');
 
+    // No token in the URL: the handshake carries the session cookie, which keeps
+    // a long-lived credential out of proxy and access logs.
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const url = `${protocol}//${location.host}/ws?token=${encodeURIComponent(this.token)}`;
-    const ws = new WebSocket(url);
+    const ws = new WebSocket(`${protocol}//${location.host}/ws`);
     this.ws = ws;
 
     ws.onopen = () => {
       this.attempt = 0;
+      this.opened = true;
       this.setState('open');
       for (const message of this.resume) ws.send(JSON.stringify(message));
       const pending = this.queue;
@@ -102,6 +113,7 @@ export class Net {
       this.setState('reconnecting');
       const delay = Math.min(MAX_BACKOFF_MS, 500 * 2 ** this.attempt) * (0.7 + Math.random() * 0.6);
       this.attempt++;
+      if (!this.opened && this.attempt % STALLED_AFTER === 0) this.handlers.onStalled();
       this.timer = window.setTimeout(() => this.open(), delay);
     };
 

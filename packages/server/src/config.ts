@@ -4,6 +4,7 @@
  * default refuses to start in production rather than silently degrading.
  */
 import { randomBytes } from 'node:crypto';
+import { MAX_COOKIE_DAYS } from './auth.js';
 
 const bool = (value: string | undefined, fallback: boolean): boolean => {
   if (value === undefined || value === '') return fallback;
@@ -39,6 +40,10 @@ export interface Config {
   aiReportCooldownMs: number;
   authRateLimit: number;
   authRateWindowMs: number;
+  secureCookies: boolean;
+  sessionPersistDays: number;
+  linkTtlMs: number;
+  linkPollIntervalMs: number;
 }
 
 export const loadConfig = (env: NodeJS.ProcessEnv = process.env): Config => {
@@ -60,11 +65,13 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): Config => {
     throw new Error('SESSION_SECRET must be at least 32 characters');
   }
 
+  const publicOrigin = env.PUBLIC_ORIGIN ?? null;
+
   return {
     env: mode,
     host: env.HOST ?? '0.0.0.0',
     port: int(env.PORT, 8080),
-    publicOrigin: env.PUBLIC_ORIGIN ?? null,
+    publicOrigin,
     sessionSecret,
     databasePath: env.DATABASE_PATH ?? (mode === 'production' ? '/data/xiangqi.db' : './data/xiangqi.db'),
     staticDir: env.STATIC_DIR ?? (mode === 'production' ? '/app/public' : '../client/dist'),
@@ -83,6 +90,17 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): Config => {
     aiReportCooldownMs: int(env.AI_REPORT_COOLDOWN_MS, 20_000),
     authRateLimit: int(env.AUTH_RATE_LIMIT, 20),
     authRateWindowMs: int(env.AUTH_RATE_WINDOW_MS, 60_000),
+    // A Secure cookie is not sent over plain HTTP, so defaulting this on in
+    // production is right — but it would also silently break a development
+    // server on a LAN address, which is how the headset is usually pointed at a
+    // laptop. Follow the origin when one is configured, the mode otherwise.
+    secureCookies: bool(
+      env.SECURE_COOKIES,
+      publicOrigin ? publicOrigin.startsWith('https://') : mode === 'production',
+    ),
+    sessionPersistDays: Math.min(MAX_COOKIE_DAYS, Math.max(1, int(env.SESSION_PERSIST_DAYS, MAX_COOKIE_DAYS))),
+    linkTtlMs: int(env.LINK_CODE_TTL_MS, 10 * 60 * 1000),
+    linkPollIntervalMs: int(env.LINK_POLL_INTERVAL_MS, 2000),
   };
 };
 

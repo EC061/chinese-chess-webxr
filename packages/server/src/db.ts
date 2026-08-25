@@ -41,6 +41,17 @@ export interface UserRow {
   last_seen: number;
 }
 
+export interface LinkCodeRow {
+  code: string;
+  device_hash: string;
+  origin_user_id: string | null;
+  user_id: string | null;
+  status: 'pending' | 'approved' | 'denied' | 'used';
+  attempts: number;
+  created_at: number;
+  expires_at: number;
+}
+
 export interface GameRow {
   id: string;
   mode: 'pvp' | 'ai';
@@ -105,6 +116,25 @@ CREATE TABLE IF NOT EXISTS games (
 CREATE INDEX IF NOT EXISTS games_created ON games (created_at DESC);
 CREATE INDEX IF NOT EXISTS games_red ON games (red_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS games_black ON games (black_id, created_at DESC);
+
+-- Headset pairings, mid-flight. A row lives for minutes: the headset creates
+-- one, a phone approves it, the headset trades it for a session and it is gone.
+-- Rows are kept rather than held in memory so a deploy in the middle of someone
+-- signing in does not strand them staring at a dead code.
+CREATE TABLE IF NOT EXISTS link_codes (
+  code           TEXT PRIMARY KEY,
+  device_hash    TEXT NOT NULL,
+  origin_user_id TEXT,
+  user_id        TEXT,
+  status         TEXT NOT NULL,
+  attempts       INTEGER NOT NULL DEFAULT 0,
+  created_at     INTEGER NOT NULL,
+  expires_at     INTEGER NOT NULL,
+  FOREIGN KEY (origin_user_id) REFERENCES users (id) ON DELETE SET NULL,
+  FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS link_codes_expiry ON link_codes (expires_at);
 `;
 
 export class Store {
@@ -176,6 +206,21 @@ export class Store {
     this.db.prepare('UPDATE users SET name = ? WHERE id = ?').run(name, id);
   }
 
+  /**
+   * Turn a guest into a real account in place.
+   *
+   * In place is the whole point: the row keeps its id, so the rating it earned
+   * as a guest, the games that reference it, and the session already sitting on
+   * the headset all survive. A player who has been climbing for a fortnight
+   * before deciding to set a password does not start over.
+   */
+  claimGuest(id: string, name: string, passwordHash: string): boolean {
+    const result = this.db.prepare(
+      'UPDATE users SET name = ?, password_hash = ?, guest = 0 WHERE id = ? AND guest = 1',
+    ).run(name, passwordHash, id);
+    return Number(result.changes) > 0;
+  }
+
   /** Ladder, excluding guests and anyone with too few games to be meaningful. */
   leaderboard(limit: number, minGames: number): UserRow[] {
     return this.db.prepare(`
@@ -220,6 +265,52 @@ export class Store {
       ORDER BY created_at DESC LIMIT 1
     `).get(userId, userId) as unknown as { created_at: number } | undefined;
     return row?.created_at ?? 0;
+  }
+
+  // ---------------------------------------------------------- pairing ---
+
+  createLinkCode(
+    code: string, deviceHash: string, originUserId: string | null, ttlMs: number,
+  ): LinkCodeRow {
+    const now = Date.now();
+    this.db.prepare(`
+      INSERT INTO link_codes (code, device_hash, origin_user_id, user_id, status, created_at, expires_at)
+      VALUES (?, ?, ?, NULL, 'pending', ?, ?)
+    `).run(code, deviceHash, originUserId, now, now + ttlMs);
+    return this.linkCode(code)!;
+  }
+
+  linkCode(code: string): LinkCodeRow | null {
+    return (this.db.prepare('SELECT * FROM link_codes WHERE code = ?')
+      .get(code) as unknown as LinkCodeRow | undefined) ?? null;
+  }
+
+  /** Counts a failed lookup, and returns how many this code has now had. */
+  noteLinkAttempt(code: string): number {
+    this.db.prepare('UPDATE link_codes SET attempts = attempts + 1 WHERE code = ?').run(code);
+    return this.linkCode(code)?.attempts ?? 0;
+  }
+
+  setLinkStatus(code: string, status: LinkCodeRow['status'], userId: string | null): void {
+    this.db.prepare('UPDATE link_codes SET status = ?, user_id = ? WHERE code = ?')
+      .run(status, userId, code);
+  }
+
+  deleteLinkCode(code: string): void {
+    this.db.prepare('DELETE FROM link_codes WHERE code = ?').run(code);
+  }
+
+  /** Pairings a player already has in flight, so one device cannot mint them forever. */
+  countPendingLinkCodes(originUserId: string): number {
+    return (this.db.prepare(`
+      SELECT COUNT(*) AS n FROM link_codes
+      WHERE origin_user_id = ? AND status = 'pending' AND expires_at > ?
+    `).get(originUserId, Date.now()) as unknown as { n: number }).n;
+  }
+
+  pruneLinkCodes(): number {
+    const result = this.db.prepare('DELETE FROM link_codes WHERE expires_at < ?').run(Date.now());
+    return Number(result.changes);
   }
 
   countUsers(): number {

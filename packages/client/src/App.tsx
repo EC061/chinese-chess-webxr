@@ -9,8 +9,8 @@
 import { useEffect, useMemo } from 'react';
 import { useStore } from './state/store.js';
 import {
-  AiSetupScreen, AuthScreen, GameHud, LeaderboardScreen, LobbyScreen, MenuScreen, SettingsScreen,
-  Toast, TopBar, TutorialScreen, useXRMode,
+  AiSetupScreen, ApproveScreen, AuthScreen, GameHud, LeaderboardScreen, LinkScreen, LobbyScreen,
+  MenuScreen, SettingsScreen, Toast, TopBar, TutorialScreen, useXRMode,
 } from './ui/Screens.js';
 import { XRApp, createStore } from './xr/XRApp.js';
 
@@ -39,6 +39,8 @@ export const App = () => {
           <main style={{ minHeight: 0 }}>
             {screen === 'boot' ? <BootScreen /> : null}
             {screen === 'auth' ? <AuthScreen /> : null}
+            {screen === 'link' ? <LinkScreen /> : null}
+            {screen === 'approve' ? <ApproveScreen /> : null}
             {screen === 'menu' ? <MenuScreen /> : null}
             {screen === 'ai-setup' ? <AiSetupScreen /> : null}
             {screen === 'lobby' ? <LobbyScreen /> : null}
