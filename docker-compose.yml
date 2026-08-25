@@ -1,27 +1,35 @@
 # ============================================================================
 # chinese-chess-webxr — deployment
 #
-#   1. cp .env.example .env    and fill in SESSION_SECRET, DOMAIN, ACME_EMAIL
-#   2. point DOMAIN's DNS A/AAAA record at this host
-#   3. docker compose up -d
+#   1. cp .env.example .env    and set SESSION_SECRET (plus PUBLIC_ORIGIN)
+#   2. docker compose up -d
+#   3. point your reverse proxy at ${BIND_ADDR}:${APP_PORT}
 #
-# Caddy is here because WebXR needs HTTPS: a headset will refuse to start an
-# immersive session on an insecure origin, so a plain HTTP deployment cannot run
-# the experience at all. Caddy gets a certificate automatically on first boot.
+# TLS is deliberately not handled here — an external reverse proxy terminates
+# it. Two things that proxy must get right, because both fail silently:
 #
-# If you already terminate TLS elsewhere (Traefik, nginx, a cloud load
-# balancer), delete the `caddy` service, publish the `app` port directly, and
-# make sure your proxy forwards the Cross-Origin-Opener-Policy and
-# Cross-Origin-Embedder-Policy response headers untouched — stripping them
-# silently halves the AI's strength.
+#   * Serve the app over HTTPS. A headset refuses to start an immersive session
+#     on an insecure origin, so plain HTTP cannot run the experience at all.
+#   * Pass the Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy
+#     response headers through untouched. Stripping them costs the page its
+#     cross-origin isolation, which costs the AI its SharedArrayBuffer, which
+#     drops it from a multi-threaded search to a single worker.
+#
+# See the README for nginx / Traefik / Caddy snippets that do both.
 # ============================================================================
 
 services:
   app:
-    image: ${IMAGE:-ghcr.io/OWNER/chinese-chess-webxr:latest}
+    image: ${IMAGE:-ghcr.io/ec061/chinese-chess-webxr:latest}
     container_name: xiangqi-app
     restart: unless-stopped
     init: true
+
+    # Published for the reverse proxy. Set BIND_ADDR=127.0.0.1 when the proxy
+    # runs on this same host, so the port is not reachable from the network.
+    ports:
+      - "${BIND_ADDR:-0.0.0.0}:${APP_PORT:-8080}:8080"
+
     environment:
       # --- required -----------------------------------------------------
       SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env — generate one with: openssl rand -hex 32}
@@ -40,51 +48,32 @@ services:
       AUTH_RATE_WINDOW_MS: ${AUTH_RATE_WINDOW_MS:-60000}
       AI_REPORT_COOLDOWN_MS: ${AI_REPORT_COOLDOWN_MS:-20000}
       # --- platform -----------------------------------------------------
+      # Interface the server listens on *inside* the container. Keep 0.0.0.0 or
+      # the published port has nothing to forward to; BIND_ADDR above is what
+      # controls whether that port is reachable off this host.
+      HOST: ${HOST:-0.0.0.0}
       CROSS_ORIGIN_ISOLATION: ${CROSS_ORIGIN_ISOLATION:-true}
       TRUST_PROXY: ${TRUST_PROXY:-true}
-      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://${DOMAIN}}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DATABASE_PATH: ${DATABASE_PATH:-/data/xiangqi.db}
+
     volumes:
       - xiangqi-data:/data
-    expose:
-      - "8080"
+
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/healthz"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
+
     security_opt:
       - no-new-privileges:true
     read_only: true
     tmpfs:
       - /tmp
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
 
-  caddy:
-    image: caddy:2-alpine
-    container_name: xiangqi-caddy
-    restart: unless-stopped
-    depends_on:
-      app:
-        condition: service_healthy
-    ports:
-      - "${HTTP_PORT:-80}:80"
-      - "${HTTPS_PORT:-443}:443"
-      # HTTP/3. Harmless to leave in; it measurably helps a headset on Wi-Fi.
-      - "${HTTPS_PORT:-443}:443/udp"
-    environment:
-      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
-      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
     logging:
       driver: json-file
       options:
@@ -93,5 +82,3 @@ services:
 
 volumes:
   xiangqi-data:
-  caddy-data:
-  caddy-config:

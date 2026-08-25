@@ -4,8 +4,6 @@ dist/
 .env
 .env.local
 data/
-caddy/data/
-caddy/config/
 *.log
 .DS_Store
 .playwright-mcp/

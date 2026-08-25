@@ -15,7 +15,7 @@ const result = await build({
   bundle: true,
   platform: 'node',
   format: 'esm',
-  target: 'node22',
+  target: 'node24',
   sourcemap: true,
   legalComments: 'none',
   // `ws` is CommonJS and calls require() for Node builtins. ESM output has no

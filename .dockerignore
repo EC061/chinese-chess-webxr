@@ -4,7 +4,6 @@
 .git
 .github
 data
-caddy
 *.md
 !README.md
 .env*

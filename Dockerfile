@@ -35,7 +35,7 @@ FROM node:24-alpine AS runtime
 LABEL org.opencontainers.image.title="chinese-chess-webxr" \
       org.opencontainers.image.description="Xiangqi (Chinese Chess) as a seated WebXR experience for Meta Quest 3 / 3S." \
       org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.source="https://github.com/OWNER/chinese-chess-webxr"
+      org.opencontainers.image.source="https://github.com/EC061/chinese-chess-webxr"
 
 WORKDIR /app
 

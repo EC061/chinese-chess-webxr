@@ -47,6 +47,10 @@ Hovering a piece names it in the chosen language; the move list renders as
 
 ## Quick start
 
+Needs **Node 24 or newer** — the server stores games through the built-in
+`node:sqlite`, so there is no native module to compile and nothing to install
+beyond the lockfile.
+
 ```sh
 npm install
 npm run dev          # server on :8080, client on :5173
@@ -86,46 +90,145 @@ adb reverse tcp:8080 tcp:8080
 ```sh
 cp .env.example .env
 #   SESSION_SECRET   openssl rand -hex 32
-#   DOMAIN           must resolve to this host
-#   ACME_EMAIL       for certificate expiry notices
 docker compose up -d
 ```
 
-That starts the app plus Caddy, which obtains a TLS certificate on first boot.
-**HTTPS is not optional** — a headset refuses to start an immersive session on
-an insecure origin, so an HTTP-only deployment cannot run the experience at all.
+That starts one container listening on `${APP_PORT:-8080}`. **TLS is not handled
+here** — put your own reverse proxy in front of it.
 
 Images are built by GitHub Actions and published to GHCR for `linux/amd64` and
 `linux/arm64`:
 
 ```sh
-IMAGE=ghcr.io/OWNER/chinese-chess-webxr:latest docker compose up -d
+IMAGE=ghcr.io/ec061/chinese-chess-webxr:latest docker compose up -d
 ```
 
-Every environment variable is documented in [`.env.example`](.env.example). Two
-deserve attention:
+If the proxy runs on the same host, set `BIND_ADDR=127.0.0.1` so the plain HTTP
+port is not reachable from the network.
 
-- **`CROSS_ORIGIN_ISOLATION`** (default on) sends COOP/COEP. Without it the
-  browser will not hand out a `SharedArrayBuffer`, and the AI falls back from a
-  multi-threaded search over one shared transposition table to a single worker —
-  worth roughly two plies. If you put your own proxy in front, do not strip
-  those headers.
-- **`RATE_AI_GAMES`** (default on) — see *Trust*, below.
+### What the reverse proxy has to get right
 
-### Behind an existing proxy
+Two requirements, both of which fail *silently* — the app will look like it
+works and quietly be worse:
 
-Drop the `caddy` service, publish `app`'s port, and forward COOP/COEP
-untouched. Set `TRUST_PROXY=false` if the app is exposed directly, or per-IP
-limits can be spoofed with a header.
+1. **Serve it over HTTPS.** WebXR requires a secure origin. Over plain HTTP the
+   headset will load the page and refuse to start an immersive session, so
+   there is no VR at all.
+2. **Pass `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy`
+   through untouched.** The app sends both. Strip them and the page loses
+   cross-origin isolation, the browser stops handing out `SharedArrayBuffer`,
+   and the AI silently drops from a multi-threaded search over a shared
+   transposition table to a single worker — roughly two plies weaker.
+
+Also make sure WebSocket upgrades are proxied (`/ws`), and give them a long
+idle timeout: a seated game can sit still for minutes while someone thinks.
+
+Most proxies forward response headers by default, so requirement 2 usually needs
+nothing — just don't add a header allowlist.
+
+<details>
+<summary><b>nginx</b></summary>
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name xiangqi.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/xiangqi.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/xiangqi.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket upgrade for live play.
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # A game can idle for a long time between moves.
+        proxy_read_timeout  600s;
+        proxy_send_timeout  600s;
+
+        # Do not add proxy_hide_header for COOP/COEP — the app needs them
+        # to reach the browser intact.
+    }
+}
+```
+</details>
+
+<details>
+<summary><b>Traefik</b> (labels on the <code>app</code> service)</summary>
+
+```yaml
+labels:
+  - traefik.enable=true
+  - traefik.http.routers.xiangqi.rule=Host(`xiangqi.example.com`)
+  - traefik.http.routers.xiangqi.entrypoints=websecure
+  - traefik.http.routers.xiangqi.tls.certresolver=letsencrypt
+  - traefik.http.services.xiangqi.loadbalancer.server.port=8080
+```
+
+Traefik handles WebSocket upgrades and passes response headers through with no
+extra configuration.
+</details>
+
+<details>
+<summary><b>Caddy</b></summary>
+
+```caddyfile
+xiangqi.example.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8080 {
+		transport http {
+			read_timeout 600s
+			write_timeout 600s
+		}
+	}
+}
+```
+</details>
+
+### Environment
+
+Every variable is documented in [`.env.example`](.env.example). The ones that
+matter most:
+
+| Variable | Why you might change it |
+| --- | --- |
+| `SESSION_SECRET` | **Required.** Signs session tokens and room passcodes. |
+| `APP_PORT` / `BIND_ADDR` | Where the proxy finds the app. `127.0.0.1` if same host. |
+| `HOST` | Interface the server listens on inside the container. Leave `0.0.0.0`; the published port has nothing to reach otherwise. |
+| `TRUST_PROXY` | Keep `true` behind a proxy that sets `X-Forwarded-For`. Set `false` if the port is reachable directly, or per-IP limits can be spoofed. |
+| `CROSS_ORIGIN_ISOLATION` | Keep `true`. See above. |
+| `RATE_AI_GAMES` | Set `false` for a ladder of only server-witnessed games — see *Trust*, below. |
+| `PUBLIC_ORIGIN` | Only decides whether the app sends HSTS. Leave blank if your proxy already does. |
 
 ### Backups
 
-Everything lives in the `xiangqi-data` volume as SQLite in WAL mode. The server
-runs a truncating checkpoint on shutdown, so a stopped container's volume is
-safe to copy directly. For a hot backup:
+Everything lives in the `xiangqi-data` volume as SQLite in WAL mode.
+
+Cold, and simplest — the server runs a truncating checkpoint on shutdown, so a
+stopped container's volume is a consistent snapshot:
 
 ```sh
-docker compose exec app sh -c 'sqlite3 /data/xiangqi.db ".backup /tmp/b.db"'
+docker compose stop app
+docker run --rm -v xiangqi-data:/data -v "$PWD:/backup" alpine \
+  tar czf /backup/xiangqi-$(date +%F).tar.gz -C /data .
+docker compose start app
+```
+
+Hot, no downtime. The runtime image is `node:alpine` and has no `sqlite3`
+binary, so borrow one from a throwaway container on the same volume —
+`.backup` takes its own locks and is safe against the running server:
+
+```sh
+docker run --rm -v xiangqi-data:/data -v "$PWD:/backup" alpine \
+  sh -c 'apk add -q sqlite && sqlite3 /data/xiangqi.db ".backup /backup/xiangqi.db"'
 ```
 
 ---

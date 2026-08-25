@@ -2,7 +2,7 @@
   "name": "chinese-chess-webxr",
   "private": true,
   "version": "1.0.0",
-  "description": "Xiangqi (Chinese Chess) as a seated WebXR experience for Meta Quest 3 / 3S \u2014 play a client-side AI or other humans in passcode-protected rooms, with rated play and an interactive piece tutorial.",
+  "description": "Xiangqi (Chinese Chess) as a seated WebXR experience for Meta Quest 3 / 3S — play a client-side AI or other humans in passcode-protected rooms, with rated play and an interactive piece tutorial.",
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -25,12 +25,15 @@
     "bundle": "npm run build && npm run bundle -w @ccx/server"
   },
   "devDependencies": {
-    "@types/node": "^22.10.2",
-    "esbuild": "^0.24.2",
-    "npm-run-all": "^4.1.5",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.2",
-    "vite": "^5.4.11",
-    "vitest": "^2.1.8"
+    "@types/node": "^24.13.3",
+    "esbuild": "^0.28.2",
+    "npm-run-all2": "^9.0.3",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
   }
 }

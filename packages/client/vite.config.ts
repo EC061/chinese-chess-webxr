@@ -45,15 +45,19 @@ export default defineConfig({
   },
   worker: { format: 'es' },
   build: {
-    target: 'es2022',
+    target: 'es2023',
     sourcemap: true,
-    rollupOptions: {
+    rolldownOptions: {
       output: {
         // Keep three and the React runtime out of the app chunk so a code change
         // does not invalidate ~700 KB of vendor code in the headset's cache.
-        manualChunks: {
-          three: ['three'],
-          react: ['react', 'react-dom'],
+        // Rolldown matches on module id rather than on entry names, hence the
+        // `[\\/]` separators rather than a bare package list.
+        codeSplitting: {
+          groups: [
+            { name: 'three', test: /node_modules[\\/]three[\\/]/ },
+            { name: 'react', test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/ },
+          ],
         },
       },
     },
