@@ -13,7 +13,7 @@
   "dependencies": {
     "@ccx/shared": "1.0.0",
     "ws": "^8.21.3",
-    "zod": "^4.4.3"
+    "zod": "^4.5.2"
   },
   "devDependencies": {
     "@types/ws": "^8.18.1"
