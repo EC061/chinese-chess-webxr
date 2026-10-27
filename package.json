@@ -25,13 +25,13 @@
     "bundle": "npm run build && npm run bundle -w @ccx/server"
   },
   "devDependencies": {
-    "@types/node": "^24.13.3",
+    "@types/node": "^24.19.2",
     "esbuild": "^0.28.2",
-    "npm-run-all2": "^9.0.3",
-    "tsx": "^4.23.12",
+    "npm-run-all2": "^9.0.4",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vite": "^8.2.2",
-    "vitest": "^4.1.11"
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
   },
   "allowScripts": {
     "esbuild@0.28.2": true
